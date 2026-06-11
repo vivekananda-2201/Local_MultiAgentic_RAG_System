@@ -1,31 +1,31 @@
 # Core Dependencies
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.6.0
-python-multipart==0.0.6
+fastapi
+uvicorn
+pydantic
+python-multipart
 
 # LLM & Embeddings
-langchain==0.1.13
-langchain-community==0.0.28
-langchain-core==0.1.33
-langchain-text-splitters==0.0.1
-ollama==0.1.32
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+ollama
 
 # Vector Database
-chromadb==0.5.3
+chromadb
 
 # PDF Processing
-pypdf==4.0.1
+pypdf
 
 # Data Processing
-numpy==1.26.3
+numpy
 
 # Visualization (optional)
-plotly==5.18.0
-scikit-learn==1.4.0
+plotly
+scikit-learn
 
 # CLI & Colors
-colorama==0.4.6
+colorama
 
 # Development
-python-dotenv==1.0.0
+python-dotenv

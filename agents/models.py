@@ -1,1 +1,0 @@
-slm_model = "qwen2.5:3b"
