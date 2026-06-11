@@ -19,3 +19,16 @@ def generate_response(prompt, messages, model=slm_model, rag_context=None):
     )
     
     return response['message']['content']
+
+def generate_response_stream(prompt, messages, model=slm_model, rag_context=None):
+    system_prompt = "You are a helpful AI Agent. Respond to user queries strictly based on the provided context. If the context does not contain the answer, respond with 'I don't know'."
+    messages.append({"role": "system", "content": system_prompt})
+    if rag_context:
+        messages.append({"role": "user", "content": f"Context: {rag_context}\n\n{prompt}"})
+    else:
+        messages.append({"role": "user", "content": prompt})
+
+    stream = ollama.chat(model=model, messages=messages, stream=True)
+    for chunk in stream:
+        if 'message' in chunk and 'content' in chunk['message']:
+            yield chunk['message']['content']

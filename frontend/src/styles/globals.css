@@ -1,0 +1,249 @@
+/**
+ * Global styles for the RAG System frontend
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@200;300;400;600&display=swap');
+
+:root {
+  /* ── Backgrounds (dark, layered) ── */
+  --bg-void: #03050e;
+  --bg-deep: #060a18;
+  --bg-panel: #09112a;
+  --bg-surface: #0d1830;
+  --bg-hover: #142040;
+
+  /* ── Borders ── */
+  --border-dim: #1e3158;
+  --border-active: #38b6ff;
+
+  /* ── Accent palette ── */
+  --cyan: #00f0ff;
+  --cyan-dim: #006a7a;
+  --blue: #4da6ff;
+  --blue-glow: rgba(77, 166, 255, 0.28);
+  --violet: #b06fff;
+  --gold: #ffcc44;
+  --amber: #ff9f30;
+  --green: #3dffa0;
+  --mint: #a0ffdc;
+  --red: #ff5577;
+  --pink: #ff7eb6;
+
+  /* ── Text ── */
+  --text-primary: #e8f3ff;
+  --text-secondary: #a8c8f0;
+  --text-muted: #6a9ec8;
+  --text-faint: #4a7aa0;
+
+  /* ── Fonts ── */
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Exo 2', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+/* ── Scanline overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-dim);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyan);
+}
+
+/* ── Selection ── */
+::selection {
+  background: var(--cyan);
+  color: var(--bg-void);
+}
+
+/* ── Links ── */
+a {
+  color: var(--cyan);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+a:hover {
+  color: var(--blue);
+  text-shadow: 0 0 8px var(--blue-glow);
+}
+
+/* ── Buttons ── */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+button:focus {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ── Input ── */
+input,
+textarea {
+  font-family: inherit;
+  color: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  padding: 8px 12px;
+  transition: border-color 0.2s;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+}
+
+/* ── Code ── */
+code {
+  font-family: var(--font-mono);
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--cyan);
+}
+
+pre {
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--green);
+}
+
+/* ── Tables ── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+th,
+td {
+  border: 1px solid var(--border-dim);
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background: var(--bg-panel);
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+/* ── Loading animation ── */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-dim);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}

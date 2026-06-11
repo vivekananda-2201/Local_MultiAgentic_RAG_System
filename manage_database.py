@@ -14,6 +14,11 @@ from modules.text_splitter import split_documents
 # Initialize colorama
 init()
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+from langchain_core._api.deprecation import LangChainDeprecationWarning
+warnings.filterwarnings("ignore", category=LangChainDeprecationWarning)
+
 class DatabaseManager:
     def __init__(self):
         self.db = Chroma(

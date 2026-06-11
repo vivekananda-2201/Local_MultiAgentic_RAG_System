@@ -1,0 +1,1882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MULTI-MODEL RAG · Neural Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@200;300;400;600&display=swap" rel="stylesheet">
+    <!-- Marked.js for markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- PDF.js for proper page-level PDF viewing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+    <style>
+        :root {
+            /* ── Backgrounds (dark, layered) ── */
+            --bg-void:    #03050e;
+            --bg-deep:    #060a18;
+            --bg-panel:   #09112a;
+            --bg-surface: #0d1830;
+            --bg-hover:   #142040;
+
+            /* ── Borders ── */
+            --border-dim:    #1e3158;
+            --border-active: #38b6ff;
+
+            /* ── Accent palette — each has a clear role ── */
+            --cyan:      #00f0ff;   /* brand / headers / links          */
+            --cyan-dim:  #006a7a;
+            --blue:      #4da6ff;   /* buttons / focus rings             */
+            --blue-glow: rgba(77,166,255,0.28);
+            --violet:    #b06fff;   /* agent pipeline / section dots     */
+            --gold:      #ffcc44;   /* emphasis / strong / score         */
+            --amber:     #ff9f30;   /* running state / warnings          */
+            --green:     #3dffa0;   /* done state / success              */
+            --mint:      #a0ffdc;   /* metadata / light info             */
+            --red:       #ff5577;   /* errors / delete                   */
+            --pink:      #ff7eb6;   /* citation chips / file names       */
+
+            /* ── Text — ALL clearly visible on dark bg ── */
+            --text-primary:   #e8f3ff;   /* main body text                */
+            --text-secondary: #a8c8f0;   /* labels, sub-text              */
+            --text-muted:     #6a9ec8;   /* timestamps, metadata — still readable */
+            --text-faint:     #4a7aa0;   /* truly secondary hints         */
+
+            /* ── Fonts ── */
+            --font-mono:    'Share Tech Mono', monospace;
+            --font-display: 'Rajdhani', sans-serif;
+            --font-body:    'Exo 2', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-void);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── SCANLINE OVERLAY ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.12) 2px,
+                rgba(0,0,0,0.12) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* ── LAYOUT ── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            grid-template-rows: 1fr 260px;
+            height: 100vh;
+            gap: 1px;
+            background: var(--border-dim);
+        }
+
+        /* ─── CHAT PANEL ─── */
+        .chat-panel {
+            grid-row: 1;
+            grid-column: 1;
+            background: var(--bg-deep);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 14px 22px;
+            border-bottom: 1px solid var(--border-dim);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-panel);
+            flex-shrink: 0;
+        }
+
+        .chat-header h2 {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: 4px;
+            color: var(--cyan);
+            text-shadow: 0 0 16px var(--cyan), 0 0 50px rgba(0,240,255,0.35);
+        }
+
+        .session-controls { display: flex; gap: 8px; align-items: center; }
+
+        .session-dropdown {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            border-radius: 6px;
+            padding: 5px 10px;
+            color: var(--mint);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .session-btn {
+            background: transparent;
+            border: 1px solid var(--border-dim);
+            color: var(--text-secondary);
+            padding: 5px 14px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .session-btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            box-shadow: 0 0 12px rgba(0,240,255,0.25);
+        }
+
+        /* ── MESSAGES ── */
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .message {
+            max-width: 88%;
+            position: relative;
+            animation: msgIn 0.25s ease;
+        }
+
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { align-self: flex-end; }
+        .message.assistant { align-self: flex-start; }
+
+        .msg-bubble {
+            padding: 13px 18px;
+            border-radius: 14px;
+            line-height: 1.65;
+            font-size: 14px;
+            font-weight: 300;
+        }
+
+        .message.user .msg-bubble {
+            background: linear-gradient(135deg, #0c2f6a, #0862c4);
+            border-bottom-right-radius: 3px;
+            box-shadow: 0 0 20px rgba(0,120,255,0.22);
+            font-weight: 400;
+            color: #ffffff;
+        }
+
+        .message.assistant .msg-bubble {
+            background: var(--bg-surface);
+            border-bottom-left-radius: 3px;
+            border-left: 3px solid var(--cyan);
+            color: var(--text-primary);
+        }
+
+        /* ── MARKDOWN STYLES inside assistant bubble ── */
+        .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
+            font-family: var(--font-display);
+            color: var(--cyan);
+            margin: 12px 0 6px;
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0,240,255,0.4);
+        }
+        .msg-bubble h1 { font-size: 18px; }
+        .msg-bubble h2 { font-size: 16px; }
+        .msg-bubble h3 { font-size: 14px; letter-spacing: 1px; }
+        .msg-bubble p { margin: 6px 0; color: var(--text-primary); }
+        .msg-bubble ul, .msg-bubble ol {
+            padding-left: 20px;
+            margin: 6px 0;
+        }
+        .msg-bubble li { margin: 3px 0; color: var(--text-primary); }
+        .msg-bubble code {
+            background: rgba(0,240,255,0.08);
+            border: 1px solid rgba(0,240,255,0.2);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--cyan);
+        }
+        .msg-bubble pre {
+            background: var(--bg-deep);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 12px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        .msg-bubble pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--green);
+        }
+        .msg-bubble blockquote {
+            border-left: 3px solid var(--amber);
+            padding-left: 12px;
+            color: var(--mint);
+            font-style: italic;
+            margin: 6px 0;
+        }
+        .msg-bubble strong { color: var(--gold); font-weight: 700; text-shadow: 0 0 8px rgba(255,204,68,0.4); }
+        .msg-bubble em { color: var(--mint); }
+        .msg-bubble table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .msg-bubble th {
+            background: rgba(0,240,255,0.12);
+            color: var(--cyan);
+            padding: 6px 10px;
+            text-align: left;
+            border: 1px solid var(--border-dim);
+        }
+        .msg-bubble td {
+            padding: 5px 10px;
+            border: 1px solid var(--border-dim);
+            color: #e8f3ff;
+        }
+        .msg-bubble tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+        /* ── STREAMING CURSOR ── */
+        .streaming-cursor::after {
+            content: '▋';
+            color: var(--cyan);
+            animation: blink 0.7s infinite;
+        }
+        @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+
+        /* ── SOURCES ── */
+        .sources-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .citation-chip {
+            background: var(--bg-deep);
+            border: 1px solid var(--cyan-dim);
+            border-radius: 20px;
+            padding: 4px 13px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--pink);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .citation-chip:hover {
+            border-color: var(--pink);
+            color: #ffffff;
+            box-shadow: 0 0 16px rgba(255,126,182,0.4);
+            transform: translateY(-1px);
+        }
+        .citation-chip .score { color: var(--gold); font-size: 10px; font-weight: bold; }
+
+        /* ── INPUT ── */
+        .input-area {
+            padding: 16px 22px;
+            border-top: 1px solid var(--border-dim);
+            display: flex;
+            gap: 10px;
+            background: var(--bg-panel);
+            flex-shrink: 0;
+        }
+
+        .input-area input {
+            flex: 1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 12px 18px;
+            color: #ffffff;
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 400;
+            outline: none;
+            transition: 0.2s;
+        }
+        .input-area input:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 18px var(--blue-glow);
+        }
+        .input-area input::placeholder { color: var(--text-faint); }
+
+        .send-btn {
+            background: var(--blue);
+            border: none;
+            border-radius: 8px;
+            padding: 0 28px;
+            color: white;
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .send-btn:hover { background: #5aa8ff; box-shadow: 0 0 22px var(--blue-glow); }
+        .send-btn:disabled { background: var(--border-dim); cursor: not-allowed; }
+
+        /* ─── RIGHT PANEL ─── */
+        .right-panel {
+            grid-row: 1 / 3;
+            grid-column: 2;
+            background: var(--bg-panel);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            border-left: 1px solid var(--border-dim);
+        }
+
+        .panel-section {
+            background: var(--bg-deep);
+            padding: 16px;
+            flex-shrink: 0;
+        }
+
+        .panel-section + .panel-section { border-top: 1px solid var(--border-dim); }
+
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 3px;
+            color: var(--violet);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title .dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--violet);
+            box-shadow: 0 0 8px var(--violet);
+        }
+
+        /* ── AGENT PIPELINE ── */
+        .agent-pipeline {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .agent-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-dim);
+            background: var(--bg-surface);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .agent-step::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 2px;
+            background: var(--border-dim);
+            transition: background 0.3s;
+        }
+
+        .agent-step.running::before { background: var(--gold); }
+        .agent-step.done::before { background: var(--green); }
+        .agent-step.error::before { background: var(--red); }
+
+        .agent-step.running {
+            border-color: rgba(255,208,96,0.3);
+            background: rgba(255,208,96,0.04);
+        }
+        .agent-step.done {
+            border-color: rgba(0,229,160,0.2);
+            background: rgba(0,229,160,0.03);
+        }
+
+        .agent-icon {
+            width: 28px; height: 28px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+            background: var(--bg-panel);
+            flex-shrink: 0;
+            border: 1px solid var(--border-dim);
+            transition: all 0.3s;
+        }
+
+        .agent-step.running .agent-icon {
+            border-color: var(--gold);
+            animation: iconPulse 0.8s ease infinite;
+        }
+        .agent-step.done .agent-icon { border-color: var(--green); }
+
+        @keyframes iconPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(255,208,96,0.4); }
+            50% { box-shadow: 0 0 0 5px rgba(255,208,96,0); }
+        }
+
+        .agent-info { flex: 1; min-width: 0; }
+        .agent-name {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--mint);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .agent-output {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .agent-step.running .agent-output { color: var(--amber); }
+        .agent-step.done .agent-output { color: var(--green); }
+        .agent-step.error .agent-output { color: var(--red); }
+
+        .agent-status-badge {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            flex-shrink: 0;
+            align-self: flex-start;
+            margin-top: 2px;
+        }
+        .badge-idle { background: rgba(58,80,112,0.35); color: var(--text-secondary); }
+        .badge-running { background: rgba(255,159,48,0.2); color: var(--amber); }
+        .badge-done { background: rgba(0,229,160,0.15); color: var(--green); }
+        .badge-error { background: rgba(255,79,111,0.15); color: var(--red); }
+
+        /* spinning indicator */
+        .spin {
+            display: inline-block;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── FILE LIST ── */
+        .file-list {
+            list-style: none;
+            max-height: 160px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(26,43,74,0.6);
+            font-size: 12px;
+        }
+
+        .file-item .fname {
+            color: var(--mint);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-item .fmeta {
+            font-size: 10px;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        .file-delete {
+            color: #884455;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .file-delete:hover { color: var(--red); background: rgba(255,79,111,0.1); }
+
+        .upload-zone {
+            border: 1px dashed var(--border-dim);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .upload-zone:hover { border-color: var(--blue); background: rgba(58,141,255,0.05); }
+        .upload-zone input { display: none; }
+        .upload-zone label {
+            color: var(--text-primary);
+            font-size: 12px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+        }
+
+        .upload-btn {
+            width: 100%;
+            margin-top: 8px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 7px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .upload-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+        /* ── AGENT LOG ── */
+        .agent-log {
+            background: var(--bg-void);
+            border-radius: 6px;
+            padding: 10px;
+            height: 130px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--green);
+            border: 1px solid var(--border-dim);
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            line-height: 1.5;
+        }
+        .log-ts { color: var(--text-muted); font-style: italic; }
+        .log-agent-name { color: var(--cyan); }
+        .log-msg-running { color: var(--amber); }
+        .log-msg-done { color: var(--green); }
+        .log-msg-error { color: var(--red); }
+        .log-msg { color: var(--green); }
+
+        /* ─── VISUALIZATION PANEL ─── */
+        .viz-panel {
+            grid-row: 2;
+            grid-column: 1;
+            background: var(--bg-void);
+            border-top: 1px solid var(--border-dim);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .viz-header {
+            padding: 8px 16px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-dim);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .viz-header h3 {
+            font-family: var(--font-display);
+            font-size: 11px;
+            letter-spacing: 3px;
+            color: var(--text-primary);
+        }
+
+        .viz-content { flex: 1; overflow: hidden; position: relative; min-height: 0; }
+        .viz-content iframe { width: 100%; height: 100%; border: none; }
+        #simCanvas { display: block; position: absolute; top:0; left:0; width:100%; height:100%; }
+
+        /* ─── POPUP / CITATION MODAL ─── */
+        .popup-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .popup-overlay.open { display: flex; }
+
+        .popup-card {
+            width: 88%;
+            height: 88%;
+            background: var(--bg-panel);
+            border: 1px solid var(--cyan);
+            border-radius: 16px;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 80px rgba(0,240,255,0.15);
+            animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.85); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-dim);
+            background: var(--bg-surface);
+            flex-shrink: 0;
+        }
+
+        .popup-title {
+            font-family: var(--font-display);
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--cyan);
+        }
+
+        .popup-meta {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--mint);
+        }
+
+        .popup-close {
+            background: transparent;
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            width: 32px; height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+        }
+        .popup-close:hover { border-color: var(--red); color: var(--red); }
+
+        .popup-body {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── PDF VIEWER (canvas-based via PDF.js) ── */
+        .pdf-viewer-wrap {
+            position: relative;
+            background: #222;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .pdf-toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(10,15,30,0.95);
+            backdrop-filter: blur(6px);
+            border-bottom: 1px solid var(--border-dim);
+            padding: 8px 14px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        .pdf-toolbar button {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .pdf-toolbar button:hover { border-color: var(--blue); color: var(--blue); }
+
+        .pdf-toolbar span {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        #pdfCanvas {
+            display: block;
+            max-width: 100%;
+            margin: 16px auto;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+        }
+
+        .pdf-loading {
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: 30px;
+            text-align: center;
+        }
+
+        /* ── CHUNK VIEWER ── */
+        .chunk-viewer {
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-dim);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .chunk-header {
+            font-family: var(--font-display);
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: var(--gold);
+        }
+
+        .chunk-score {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+        .score-bar {
+            height: 4px;
+            width: 80px;
+            background: var(--border-dim);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        .chunk-text {
+            font-size: 13px;
+            line-height: 1.7;
+            color: #e8f3ff;
+            font-weight: 400;
+            white-space: pre-wrap;
+            background: var(--bg-deep);
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border-dim);
+        }
+
+        /* ── SCROLLBARS ── */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-dim); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
+    </style>
+</head>
+<body>
+<div class="main-grid">
+
+    <!-- ── CHAT PANEL ── -->
+    <div class="chat-panel">
+        <div class="chat-header">
+            <h2>⚡ MULTI-MODEL RAG</h2>
+            <div class="session-controls">
+                <select id="sessionSelector" class="session-dropdown"></select>
+                <button class="session-btn" id="newSessionBtn">＋ NEW</button>
+            </div>
+        </div>
+
+        <div class="messages-container" id="messageContainer"></div>
+
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Query the knowledge base..." autocomplete="off">
+            <button class="send-btn" id="sendBtn">SEND</button>
+        </div>
+    </div>
+
+    <!-- ── RIGHT PANEL ── -->
+    <div class="right-panel">
+
+        <!-- Agent Pipeline -->
+        <div class="panel-section">
+            <div class="section-title"><span class="dot"></span> AGENT PIPELINE</div>
+            <div class="agent-pipeline">
+                <div class="agent-step" id="step-query_parser">
+                    <div class="agent-icon">🔍</div>
+                    <div class="agent-info">
+                        <div class="agent-name">Query Parser</div>
+                        <div class="agent-output" id="out-query_parser">Waiting for input…</div>
+                    </div>
+                    <span class="agent-status-badge badge-idle" id="badge-query_parser">IDLE</span>
+                </div>
+                <div class="agent-step" id="step-rag_query">
+                    <div class="agent-icon">🧠</div>
+                    <div class="agent-info">
+                        <div class="agent-name">RAG Refiner</div>
+                        <div class="agent-output" id="out-rag_query">Waiting for input…</div>
+                    </div>
+                    <span class="agent-status-badge badge-idle" id="badge-rag_query">IDLE</span>
+                </div>
+                <div class="agent-step" id="step-response">
+                    <div class="agent-icon">💬</div>
+                    <div class="agent-info">
+                        <div class="agent-name">Response Generator</div>
+                        <div class="agent-output" id="out-response">Waiting for input…</div>
+                    </div>
+                    <span class="agent-status-badge badge-idle" id="badge-response">IDLE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Knowledge Base -->
+        <div class="panel-section">
+            <div class="section-title"><span class="dot"></span> KNOWLEDGE BASE</div>
+            <ul class="file-list" id="fileList">
+                <li style="color:var(--text-secondary); font-size:12px; font-family:var(--font-mono);">Loading…</li>
+            </ul>
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileUpload').click()">
+                <input type="file" id="fileUpload" accept=".pdf" style="display:none">
+                <div id="uploadLabel" style="display:flex;align-items:center;gap:8px;justify-content:center;">
+                    <span style="font-size:16px;">📂</span>
+                    <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-primary);">Choose PDF to upload</span>
+                </div>
+                <div id="fileSelectedInfo" style="display:none;margin-top:6px;font-family:var(--font-mono);font-size:11px;color:var(--green);"></div>
+            </div>
+            <button class="upload-btn" id="uploadBtn">
+                <span id="uploadBtnText">📤 ADD TO KNOWLEDGE BASE</span>
+            </button>
+        </div>
+
+        <!-- Agent Log -->
+        <div class="panel-section">
+            <div class="section-title"><span class="dot"></span> AGENT LOG</div>
+            <div class="agent-log" id="agentLog">
+                <div class="log-entry"><span class="log-ts">[init] </span><span class="log-msg">system ready</span></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── VIZ PANEL ── -->
+    <div class="viz-panel">
+        <div class="viz-header">
+            <h3>VECTOR SPACE · COSINE SIMILARITY SIMULATION</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span id="vizStatus" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">IDLE</span>
+                <button id="refreshVizBtn" class="session-btn">⟳ RESET</button>
+            </div>
+        </div>
+        <div class="viz-content" style="position:relative;overflow:hidden;">
+            <canvas id="simCanvas"></canvas>
+            <div id="simOverlay" style="position:absolute;top:8px;left:12px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);pointer-events:none;">
+                <span id="simInfo">Nodes: 0 · Edges: 0 · Query: —</span>
+            </div>
+            <div id="simLegend" style="position:absolute;bottom:8px;left:12px;display:flex;gap:14px;font-family:var(--font-mono);font-size:10px;pointer-events:none;">
+                <span style="color:var(--cyan);">● Chunk node</span>
+                <span style="color:var(--gold);">● Query vector</span>
+                <span style="color:var(--green);">— High similarity</span>
+                <span style="color:var(--violet);">— Mid similarity</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── CITATION POPUP ── -->
+<div class="popup-overlay" id="popupOverlay">
+    <div class="popup-card">
+        <div class="popup-header">
+            <div>
+                <div class="popup-title">📄 SOURCE CITATION</div>
+                <div class="popup-meta" id="popupMeta"></div>
+            </div>
+            <button class="popup-close" onclick="closePopup()">✕</button>
+        </div>
+        <div class="popup-body">
+            <div class="pdf-viewer-wrap" id="pdfViewerWrap">
+                <div class="pdf-toolbar" id="pdfToolbar">
+                    <button onclick="pdfGoTo(currentPdfPage - 1)">◀</button>
+                    <span id="pdfPageInfo">Page — / —</span>
+                    <button onclick="pdfGoTo(currentPdfPage + 1)">▶</button>
+                    <button onclick="pdfZoom(0.15)">＋</button>
+                    <button onclick="pdfZoom(-0.15)">－</button>
+                </div>
+                <div class="pdf-loading" id="pdfLoading">Loading PDF…</div>
+                <canvas id="pdfCanvas"></canvas>
+            </div>
+            <div class="chunk-viewer">
+                <div class="chunk-header">CHUNK CONTENT</div>
+                <div class="chunk-score">
+                    Relevance: <span id="chunkScoreVal">—</span>
+                    <div class="score-bar"><div class="score-fill" id="scoreBar" style="width:0%"></div></div>
+                </div>
+                <div class="chunk-text" id="chunkText"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ────────────────────────────────────────────────
+//  CONFIG
+// ────────────────────────────────────────────────
+const BASE_URL = '';
+let currentSessionId = localStorage.getItem('rag_session_id') || null;
+let chatHistory = [];
+let sessionsList = [];
+let currentStreamController = null;
+
+// PDF.js state
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let pdfDoc = null;
+let currentPdfPage = 1;
+let pdfScale = 1.2;
+let pdfRenderTask = null;
+
+// ────────────────────────────────────────────────
+//  DOM REFS
+// ────────────────────────────────────────────────
+const msgContainer    = document.getElementById('messageContainer');
+const userInput       = document.getElementById('userInput');
+const sendBtn         = document.getElementById('sendBtn');
+const fileListEl      = document.getElementById('fileList');
+const agentLog        = document.getElementById('agentLog');
+const sessionSelector = document.getElementById('sessionSelector');
+const newSessionBtn   = document.getElementById('newSessionBtn');
+const popupOverlay    = document.getElementById('popupOverlay');
+const vizFrame        = document.getElementById('vizFrame');
+const refreshVizBtn   = document.getElementById('refreshVizBtn');
+
+// ────────────────────────────────────────────────
+//  MARKDOWN CONFIG
+// ────────────────────────────────────────────────
+marked.setOptions({
+    breaks: true,
+    gfm: true,
+    headerIds: false,
+    mangle: false
+});
+
+function renderMarkdown(text) {
+    return marked.parse(text || '');
+}
+
+// ────────────────────────────────────────────────
+//  AGENT PIPELINE UI
+// ────────────────────────────────────────────────
+const AGENTS = ['query_parser', 'rag_query', 'response'];
+
+function setAgentStatus(agent, status, output) {
+    const step   = document.getElementById(`step-${agent}`);
+    const badge  = document.getElementById(`badge-${agent}`);
+    const outEl  = document.getElementById(`out-${agent}`);
+
+    if (!step) return;
+
+    // Remove previous status classes
+    step.classList.remove('running', 'done', 'error');
+    badge.classList.remove('badge-idle', 'badge-running', 'badge-done', 'badge-error');
+
+    switch (status) {
+        case 'running':
+            step.classList.add('running');
+            badge.classList.add('badge-running');
+            badge.innerHTML = '<span class="spin">◌</span> RUN';
+            break;
+        case 'done':
+            step.classList.add('done');
+            badge.classList.add('badge-done');
+            badge.textContent = '✓ DONE';
+            break;
+        case 'error':
+            step.classList.add('error');
+            badge.classList.add('badge-error');
+            badge.textContent = '✗ ERR';
+            break;
+        default:
+            badge.classList.add('badge-idle');
+            badge.textContent = 'IDLE';
+    }
+
+    if (output !== undefined) {
+        const txt = Array.isArray(output) ? output.join(' · ') : String(output);
+        outEl.textContent = txt.length > 80 ? txt.slice(0, 80) + '…' : txt;
+    }
+}
+
+function resetAgents() {
+    AGENTS.forEach(a => setAgentStatus(a, 'idle', 'Waiting for input…'));
+}
+
+function addLog(agent, status, msg) {
+    const ts = new Date().toLocaleTimeString('en', { hour12: false });
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    const cls = status === 'running' ? 'log-msg-running'
+              : status === 'done'    ? 'log-msg-done'
+              : status === 'error'   ? 'log-msg-error'
+              : 'log-msg';
+    const txtMsg = Array.isArray(msg)
+        ? JSON.stringify(msg).slice(0, 120)
+        : String(msg).slice(0, 120);
+    entry.innerHTML =
+        `<span class="log-ts">[${ts}] </span>` +
+        `<span class="log-agent-name">${agent}</span> ` +
+        `<span class="${cls}">${txtMsg}</span>`;
+    agentLog.appendChild(entry);
+    agentLog.scrollTop = agentLog.scrollHeight;
+}
+
+// ────────────────────────────────────────────────
+//  SESSION MANAGEMENT
+// ────────────────────────────────────────────────
+function generateSessionId() {
+    return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+async function loadSessions() {
+    const res = await fetch(`${BASE_URL}/api/chat/sessions`);
+    sessionsList = await res.json();
+    renderSessionDropdown();
+}
+
+function renderSessionDropdown() {
+    sessionSelector.innerHTML = sessionsList.map(s => {
+        const d = new Date(s.created_at).toLocaleString();
+        return `<option value="${s.id}" ${s.id === currentSessionId ? 'selected' : ''}>${s.id.substr(0,8)}… (${d})</option>`;
+    }).join('');
+}
+
+async function loadSessionHistory(sessionId) {
+    const res = await fetch(`${BASE_URL}/api/chat/history?session_id=${sessionId}`);
+    chatHistory = await res.json();
+    renderMessages();
+}
+
+async function setSession(id) {
+    currentSessionId = id;
+    localStorage.setItem('rag_session_id', id);
+    await loadSessionHistory(id);
+}
+
+async function newSession() {
+    const newId = generateSessionId();
+    await setSession(newId);
+    await loadSessions();
+}
+
+// ────────────────────────────────────────────────
+//  MESSAGES
+// ────────────────────────────────────────────────
+function renderMessages() {
+    msgContainer.innerHTML = '';
+    chatHistory.forEach(msg => appendMessage(msg.role, msg.content, msg.sources || []));
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+}
+
+function appendMessage(role, content, sources = []) {
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    if (role === 'assistant') {
+        bubble.innerHTML = renderMarkdown(content);
+    } else {
+        bubble.textContent = content;
+    }
+
+    wrap.appendChild(bubble);
+
+    if (sources && sources.length > 0) {
+        const row = document.createElement('div');
+        row.className = 'sources-row';
+        sources.forEach(src => {
+            const chip = document.createElement('span');
+            chip.className = 'citation-chip';
+            const fname = getFileName(src.source) || 'doc';
+            chip.innerHTML = `📎 ${fname} p.${src.page || '?'} <span class="score">${src.score ? src.score.toFixed(2) : ''}</span>`;
+            chip.onclick = () => openCitationPopup(src);
+            row.appendChild(chip);
+        });
+        wrap.appendChild(row);
+    }
+
+    msgContainer.appendChild(wrap);
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+    return wrap;
+}
+
+// Update the last assistant bubble during streaming
+function updateStreamingBubble(content, isStreaming) {
+    const msgs = msgContainer.querySelectorAll('.message.assistant');
+    if (!msgs.length) return;
+    const last = msgs[msgs.length - 1];
+    const bubble = last.querySelector('.msg-bubble');
+    if (!bubble) return;
+    bubble.innerHTML = renderMarkdown(content);
+    if (isStreaming) {
+        bubble.classList.add('streaming-cursor');
+    } else {
+        bubble.classList.remove('streaming-cursor');
+    }
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+}
+
+// ────────────────────────────────────────────────
+//  STREAMING CHAT
+// ────────────────────────────────────────────────
+function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text || sendBtn.disabled) return;
+    userInput.value = '';
+    sendBtn.disabled = true;
+
+    // Add user message immediately
+    appendMessage('user', text);
+    chatHistory.push({ role: 'user', content: text, sources: [] });
+
+    resetAgents();
+
+    if (currentStreamController) {
+        currentStreamController.close();
+        currentStreamController = null;
+    }
+
+    const params = new URLSearchParams({ session_id: currentSessionId, message: text });
+    const evtSrc = new EventSource(`${BASE_URL}/api/chat/stream?${params}`);
+    currentStreamController = evtSrc;
+
+    let assistantContent = '';
+    let sources = [];
+
+    // Insert empty assistant bubble for streaming
+    const tempWrap = appendMessage('assistant', '');
+
+    evtSrc.addEventListener('agent', e => {
+        const data = JSON.parse(e.data);
+        setAgentStatus(data.agent, data.status, data.output);
+        addLog(data.agent, data.status, data.output);
+    });
+
+    evtSrc.addEventListener('sources', e => {
+        sources = JSON.parse(e.data);
+    });
+
+    // viz_search fires at the EXACT moment the server computed
+    // cosine_similarity(refined_query_embedding, all_chunk_embeddings)
+    // inside the live RAG pipeline — this is real data, not animation.
+    evtSrc.addEventListener('viz_search', e => {
+        try {
+            simEngine.onVizSearch(JSON.parse(e.data));
+        } catch(err) {
+            console.warn('viz_search parse error', err);
+        }
+    });
+
+    evtSrc.addEventListener('token', e => {
+        const data = JSON.parse(e.data);
+        assistantContent += data.token;
+        updateStreamingBubble(assistantContent, true);
+    });
+
+    evtSrc.addEventListener('end', () => {
+        evtSrc.close();
+        currentStreamController = null;
+        sendBtn.disabled = false;
+
+        // Finalise bubble: full markdown + no cursor
+        updateStreamingBubble(assistantContent, false);
+
+        // Add sources chips to the last assistant message
+        if (sources.length > 0) {
+            const msgs = msgContainer.querySelectorAll('.message.assistant');
+            const last = msgs[msgs.length - 1];
+            const row = document.createElement('div');
+            row.className = 'sources-row';
+            sources.forEach(src => {
+                const chip = document.createElement('span');
+                chip.className = 'citation-chip';
+                const fname = getFileName(src.source) || 'doc';
+                chip.innerHTML = `📎 ${fname} p.${src.page || '?'} <span class="score">${src.score ? src.score.toFixed(2) : ''}</span>`;
+                chip.onclick = () => openCitationPopup(src);
+                row.appendChild(chip);
+            });
+            last.appendChild(row);
+        }
+
+        chatHistory.push({ role: 'assistant', content: assistantContent, sources });
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+
+        // Mark response agent done if not already
+        setAgentStatus('response', 'done', 'Response complete.');
+    });
+
+    evtSrc.onerror = err => {
+        console.error('SSE error', err);
+        evtSrc.close();
+        currentStreamController = null;
+        sendBtn.disabled = false;
+        setAgentStatus('response', 'error', 'Stream error');
+        addLog('stream', 'error', 'Connection error — check server');
+    };
+}
+
+// ────────────────────────────────────────────────
+//  DOCUMENT MANAGEMENT
+// ────────────────────────────────────────────────
+async function fetchDocuments() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/documents`);
+        const files = await res.json();
+        renderFileList(files);
+    } catch (e) {
+        fileListEl.innerHTML = '<li style="color:var(--red);font-size:11px;font-family:var(--font-mono);">Error loading docs</li>';
+    }
+}
+
+function renderFileList(files) {
+    if (!files.length) {
+        fileListEl.innerHTML = '<li style="color:var(--text-secondary);font-size:11px;font-family:var(--font-mono);">No documents loaded</li>';
+        return;
+    }
+    fileListEl.innerHTML = files.map(f => {
+        const name = getFileName(f.name) || f.name;
+        return `<li class="file-item">
+            <span class="fname" title="${f.name}">${name}</span>
+            <span class="fmeta">${f.pages}p · ${f.chunks}c</span>
+            <span class="file-delete" onclick="deleteFile('${f.name}')">✖</span>
+        </li>`;
+    }).join('');
+}
+
+window.deleteFile = async function(filename) {
+    if (!confirm(`Delete ${filename}?`)) return;
+    await fetch(`${BASE_URL}/api/documents/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: filename })
+    });
+    fetchDocuments();
+    addLog('system', 'done', `Deleted ${getFileName(filename)}`);
+};
+
+// Track selected file
+let pendingFile = null;
+
+document.addEventListener('DOMContentLoaded', () => {});
+
+function initUploadListeners() {
+    const fileInput = document.getElementById('fileUpload');
+    fileInput.addEventListener('change', () => {
+        pendingFile = fileInput.files[0] || null;
+        const info = document.getElementById('fileSelectedInfo');
+        const label = document.getElementById('uploadLabel');
+        const zone = document.getElementById('uploadZone');
+        if (pendingFile) {
+            info.textContent = `✓ ${pendingFile.name} (${(pendingFile.size/1024).toFixed(1)} KB)`;
+            info.style.display = 'block';
+            label.querySelector('span:last-child').textContent = 'File selected — click below to upload';
+            zone.style.borderColor = 'var(--green)';
+            zone.style.background = 'rgba(61,255,160,0.04)';
+        } else {
+            info.style.display = 'none';
+            label.querySelector('span:last-child').textContent = 'Choose PDF to upload';
+            zone.style.borderColor = '';
+            zone.style.background = '';
+        }
+    });
+}
+
+async function uploadFile() {
+    if (!pendingFile) {
+        // If nothing selected yet, open picker
+        document.getElementById('fileUpload').click();
+        return;
+    }
+    const file = pendingFile;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const btn = document.getElementById('uploadBtn');
+    const btnText = document.getElementById('uploadBtnText');
+    btn.disabled = true;
+    btnText.textContent = '⏳ UPLOADING…';
+
+    addLog('system', 'running', `Uploading ${file.name}…`);
+    try {
+        const res = await fetch(`${BASE_URL}/api/documents/add`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        fetchDocuments();
+        addLog('system', 'done', `${file.name} added to KB`);
+        btnText.textContent = '✓ ADDED TO KB';
+        setTimeout(() => { btnText.textContent = '📤 ADD TO KNOWLEDGE BASE'; }, 2500);
+        // Reset zone
+        pendingFile = null;
+        document.getElementById('fileUpload').value = '';
+        document.getElementById('fileSelectedInfo').style.display = 'none';
+        document.getElementById('uploadLabel').querySelector('span:last-child').textContent = 'Choose PDF to upload';
+        const zone = document.getElementById('uploadZone');
+        zone.style.borderColor = '';
+        zone.style.background = '';
+    } catch (e) {
+        addLog('system', 'error', `Upload failed: ${e.message}`);
+        btnText.textContent = '✗ UPLOAD FAILED';
+        setTimeout(() => { btnText.textContent = '📤 ADD TO KNOWLEDGE BASE'; }, 2500);
+    }
+    btn.disabled = false;
+}
+
+// ────────────────────────────────────────────────
+//  CITATION POPUP — PDF.js canvas-based viewer
+// ────────────────────────────────────────────────
+
+// Normalise source paths that may use backslashes (Windows DB paths) or forward slashes
+function getFileName(sourcePath) {
+    return (sourcePath || '').replace(/\\/g, '/').split('/').pop();
+}
+
+async function openCitationPopup(src) {
+    const sourcePath = src.source || '';
+    const pageNum = parseInt(src.page, 10) || 1;
+    // PDF.js pages are 1-indexed; PyPDF page metadata is 0-indexed, so add 1
+    const pdfPage = pageNum + 1;
+    const fileName = getFileName(sourcePath);
+
+    // Show meta
+    document.getElementById('popupMeta').textContent =
+        `${fileName}  ·  Page ${pdfPage}  ·  Score ${src.score ? src.score.toFixed(3) : '—'}`;
+
+    // Chunk content
+    document.getElementById('chunkText').textContent = src.content || 'No content available.';
+
+    // Score bar
+    const score = src.score || 0;
+    document.getElementById('chunkScoreVal').textContent = score.toFixed(3);
+    document.getElementById('scoreBar').style.width = `${Math.min(score * 100, 100)}%`;
+
+    // Open modal
+    popupOverlay.classList.add('open');
+
+    // Load PDF via PDF.js
+    const pdfUrl = `${BASE_URL}/files/${encodeURIComponent(fileName)}`;
+    document.getElementById('pdfLoading').style.display = 'block';
+    document.getElementById('pdfCanvas').style.display = 'none';
+
+    try {
+        if (pdfDoc) {
+            pdfDoc.destroy();
+            pdfDoc = null;
+        }
+        pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+        document.getElementById('pdfLoading').style.display = 'none';
+        document.getElementById('pdfCanvas').style.display = 'block';
+        await pdfGoTo(pdfPage);
+    } catch (err) {
+        document.getElementById('pdfLoading').textContent = `⚠ Could not load PDF: ${err.message}`;
+        console.error('PDF.js error', err);
+    }
+}
+
+async function pdfGoTo(pageNum) {
+    if (!pdfDoc) return;
+    pageNum = Math.max(1, Math.min(pageNum, pdfDoc.numPages));
+    currentPdfPage = pageNum;
+
+    document.getElementById('pdfPageInfo').textContent = `Page ${pageNum} / ${pdfDoc.numPages}`;
+
+    if (pdfRenderTask) {
+        pdfRenderTask.cancel();
+        pdfRenderTask = null;
+    }
+
+    const page = await pdfDoc.getPage(pageNum);
+    const canvas = document.getElementById('pdfCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const viewport = page.getViewport({ scale: pdfScale });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    pdfRenderTask = page.render({ canvasContext: ctx, viewport });
+    try {
+        await pdfRenderTask.promise;
+    } catch (e) {
+        if (e.name !== 'RenderingCancelledException') console.error(e);
+    }
+}
+
+function pdfZoom(delta) {
+    pdfScale = Math.max(0.5, Math.min(pdfScale + delta, 3.0));
+    pdfGoTo(currentPdfPage);
+}
+
+window.closePopup = function() {
+    popupOverlay.classList.remove('open');
+    if (pdfDoc) { pdfDoc.destroy(); pdfDoc = null; }
+    document.getElementById('pdfCanvas').style.display = 'none';
+    document.getElementById('pdfLoading').textContent = 'Loading PDF…';
+};
+
+popupOverlay.addEventListener('click', e => {
+    if (e.target === popupOverlay) closePopup();
+});
+
+// ────────────────────────────────────────────────
+//  INIT
+// ────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+    // marked is synchronous, no async init needed
+    await loadSessions();
+    if (!currentSessionId) {
+        await newSession();
+    } else {
+        await setSession(currentSessionId);
+    }
+    fetchDocuments();
+
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    newSessionBtn.addEventListener('click', newSession);
+    sessionSelector.addEventListener('change', e => setSession(e.target.value));
+    document.getElementById('uploadBtn').addEventListener('click', uploadFile);
+    initUploadListeners();
+    refreshVizBtn.addEventListener('click', () => {
+        simEngine.reset();
+    });
+
+    // simEngine.init() is called at bottom of script after engine is defined
+});
+
+// ════════════════════════════════════════════════════════════════
+//  REAL VECTOR SPACE — driven entirely by actual RAG search events
+//  Nodes = real ChromaDB chunks at true PCA-reduced positions.
+//  Colors/edges animate ONLY when the server emits viz_search,
+//  which fires at the exact moment cosine similarity is computed
+//  inside the RAG pipeline — not on user send, not before search.
+// ════════════════════════════════════════════════════════════════
+const simEngine = (() => {
+    let canvas, ctx, W, H, raf;
+
+    // Map chunk_id → node object (real PCA position from /api/vectors/all)
+    let nodeMap  = {};   // chunk_id → node
+    let nodeList = [];   // ordered list for iteration
+    let edges    = [];   // structural chunk-to-chunk edges
+    let loaded   = false;
+
+    // Per-search state
+    let queryNode    = null;   // gold Q dot placed at centroid of top matches
+    let scanEdges    = [];     // live edges from Q → each chunk, built as scores arrive
+    let scanQuery    = '';
+    let scanTotal    = 0;
+    let scanReceived = 0;
+    let scanDoneTimer = null;
+
+    const C = {
+        cyan:   '#00f0ff', gold:   '#ffcc44', green:  '#3dffa0',
+        violet: '#b06fff', blue:   '#4da6ff', amber:  '#ff9f30',
+        red:    '#ff5577', dim:    'rgba(20,40,80,0.45)',
+        grid:   'rgba(18,36,72,0.28)'
+    };
+
+    // ────── Init ──────
+    function init() {
+        canvas = document.getElementById('simCanvas');
+        ctx    = canvas.getContext('2d');
+
+        // Use ResizeObserver — fires reliably after layout, unlike getBoundingClientRect at init
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width > 0 && height > 0) {
+                    canvas.width  = W = Math.floor(width);
+                    canvas.height = H = Math.floor(height);
+                    _project();
+                }
+            }
+        });
+        ro.observe(canvas.parentElement);
+
+        window.addEventListener('resize', () => {
+            const wrap = canvas.parentElement;
+            const w = wrap.offsetWidth, h = wrap.offsetHeight;
+            if (w > 0 && h > 0) {
+                canvas.width = W = w;
+                canvas.height = H = h;
+                _project();
+            }
+        });
+
+        // Set initial size — use offsetWidth which is available after DOMContentLoaded
+        const wrap = canvas.parentElement;
+        W = canvas.width  = wrap.offsetWidth  || 900;
+        H = canvas.height = wrap.offsetHeight || 240;
+
+        _startRenderLoop();
+
+        // Fetch nodes — with a small delay to ensure layout is complete
+        setTimeout(_fetchNodes, 120);
+    }
+
+    // ────── Fetch real PCA-2D nodes from DB ──────
+    async function _fetchNodes() {
+        // Re-measure canvas size now that layout is settled
+        const wrap = canvas.parentElement;
+        if (wrap.offsetWidth > 0) {
+            canvas.width  = W = wrap.offsetWidth;
+            canvas.height = H = wrap.offsetHeight;
+        }
+        setStatus('LOADING');
+        setInfo('Fetching chunk embeddings from ChromaDB…');
+        try {
+            const res  = await fetch('/api/vectors/all');
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            nodeMap  = {};
+            nodeList = [];
+            data.nodes.forEach(n => {
+                const node = {
+                    chunk_id: n.chunk_id,
+                    x: n.x,          // normalised [0,1] from PCA
+                    y: n.y,
+                    cx: 0, cy: 0,    // canvas pixels — set by _project()
+                    source:  n.source,
+                    page:    n.page,
+                    preview: n.preview,
+                    r:    5,
+                    pulse: Math.random() * Math.PI * 2,
+                    vx:   (Math.random()-0.5)*0.12,
+                    vy:   (Math.random()-0.5)*0.10,
+                    // search state
+                    sim:      null,   // real cosine score, null = not searched yet
+                    color:    C.cyan,
+                    alpha:    0.75,
+                    edgeIdx:  -1,     // index into scanEdges
+                };
+                nodeMap[n.chunk_id] = node;
+                nodeList.push(node);
+            });
+            edges = data.edges;   // [{i, j, sim}] index into nodeList
+            _project();
+            loaded = true;
+            console.log(`[simEngine] Loaded ${nodeList.length} nodes, ${edges.length} edges. Canvas: ${W}×${H}`);
+            setStatus('IDLE');
+            setInfo(`${nodeList.length} chunks loaded · ${edges.length} structural edges · waiting for query…`);
+        } catch(e) {
+            console.error('[simEngine] _fetchNodes error:', e);
+            setStatus('ERROR');
+            setInfo('Could not load embeddings: ' + e.message);
+            // Retry once after 3s in case server was still starting
+            setTimeout(_fetchNodes, 3000);
+        }
+    }
+
+    function _project() {
+        const PAD = 38;
+        nodeList.forEach(n => {
+            n.cx = PAD + n.x * (W - PAD*2);
+            n.cy = PAD + n.y * (H - PAD*2);
+        });
+    }
+
+    // ────── Render loop (always running) ──────
+    function _startRenderLoop() {
+        const tick = () => {
+            if (!ctx) { raf = requestAnimationFrame(tick); return; }
+            ctx.clearRect(0, 0, W, H);
+            _drawGrid();
+
+            if (loaded) {
+                // Idle drift only when NOT scanning
+                if (!queryNode) {
+                    const PAD = 38;
+                    nodeList.forEach(n => {
+                        n.cx += n.vx; n.cy += n.vy;
+                        if (n.cx < PAD || n.cx > W-PAD) n.vx *= -1;
+                        if (n.cy < PAD || n.cy > H-PAD) n.vy *= -1;
+                    });
+                }
+
+                _drawStructuralEdges();
+                _drawScanEdges();
+
+                nodeList.forEach(n => {
+                    n.pulse += 0.020;
+                    _drawChunk(n);
+                    if (n.sim !== null && n.sim > 0.38) _drawSimLabel(n);
+                });
+
+                _drawQueryNode();
+            }
+
+            raf = requestAnimationFrame(tick);
+        };
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(tick);
+    }
+
+    // ────── Called by the chat EventSource listener when viz_search arrives ──────
+    // This is the ONLY entry point for the animation — it fires when the server
+    // has just computed real cosine_similarity(query_embedding, all_chunk_embeddings)
+    // inside the RAG pipeline, and streams the actual scores back.
+    function onVizSearch(payload) {
+        console.log('[simEngine] onVizSearch received, scores:', payload.scores?.length, 'loaded:', loaded);
+        if (!loaded) { console.warn('[simEngine] onVizSearch called but nodes not loaded yet'); return; }
+        if (scanDoneTimer) { clearTimeout(scanDoneTimer); scanDoneTimer = null; }
+
+        scanQuery    = payload.refined_query || '';
+        scanTotal    = payload.total || nodeList.length;
+        scanReceived = 0;
+        scanEdges    = [];
+
+        // Reset all node sim state
+        nodeList.forEach(n => { n.sim = null; n.color = C.cyan; n.alpha = 0.55; n.edgeIdx = -1; });
+
+        setStatus('SCANNING');
+        setInfo(`RAG search: embedding "${scanQuery.slice(0,30)}…" vs ${scanTotal} chunks`);
+
+        // Place query node at canvas centre (will move to centroid of top matches later)
+        queryNode = { cx: W/2, cy: H/2, alpha: 0, pulse: 0, r: 9 };
+
+        // Apply each real score from the payload
+        const scores = payload.scores || [];
+        scores.forEach((s, i) => {
+            const node = nodeMap[s.chunk_id];
+            if (!node) return;
+            node.sim   = s.sim;
+            node.alpha = 1.0;
+            // Color by actual cosine similarity tier (matching Chroma's L2-distance scale)
+            node.color = s.sim > 0.72 ? C.green
+                       : s.sim > 0.55 ? C.violet
+                       : s.sim > 0.38 ? C.blue
+                       : C.dim;
+
+            // Create a growing scan edge from Q to this chunk
+            const edgeObj = { nodeRef: node, sim: s.sim, progress: 0 };
+            node.edgeIdx = scanEdges.length;
+            scanEdges.push(edgeObj);
+        });
+
+        scanReceived = scores.length;
+        setInfo(`RAG search complete: ${scanReceived} chunks scored · query: "${scanQuery.slice(0,28)}…"`);
+
+        // Animate edges growing outward over ~1.4s
+        _animateEdges();
+
+        // After edges fully drawn, reposition query node to centroid of top-5
+        setTimeout(() => {
+            const top = [...nodeList]
+                .filter(n => n.sim !== null && n.sim > 0.55)
+                .sort((a,b) => b.sim - a.sim)
+                .slice(0, 5);
+            if (top.length && queryNode) {
+                queryNode.cx = top.reduce((s,n)=>s+n.cx,0)/top.length;
+                queryNode.cy = top.reduce((s,n)=>s+n.cy,0)/top.length;
+            }
+            // Show final stats
+            const matched = nodeList.filter(n=>n.sim!==null&&n.sim>0.55).length;
+            const topSim  = Math.max(...nodeList.filter(n=>n.sim!==null).map(n=>n.sim), 0);
+            setStatus('DONE');
+            setInfo(`✓ ${scanReceived} chunks scored · ${matched} matched (>0.55) · top: ${(topSim*100).toFixed(1)}%`);
+        }, 1500);
+
+        // Return to idle after 8s
+        scanDoneTimer = setTimeout(_resetScan, 8000);
+    }
+
+    function _animateEdges() {
+        // Grow all edges simultaneously over ~90 frames (~1.5s)
+        const growFrames = 90;
+        let f = 0;
+        const grow = () => {
+            f++;
+            scanEdges.forEach(e => {
+                e.progress = Math.min(1, f / growFrames);
+            });
+            if (f < growFrames) requestAnimationFrame(grow);
+        };
+        requestAnimationFrame(grow);
+    }
+
+    function _resetScan() {
+        nodeList.forEach(n => { n.sim = null; n.color = C.cyan; n.alpha = 0.75; n.edgeIdx = -1; });
+        scanEdges  = [];
+        queryNode  = null;
+        scanQuery  = '';
+        setStatus('IDLE');
+        setInfo(`${nodeList.length} chunks · ${edges.length} structural edges · waiting for query…`);
+    }
+
+    // ────── Draw helpers ──────
+    function _drawGrid() {
+        ctx.save();
+        ctx.strokeStyle = C.grid;
+        ctx.lineWidth = 0.5;
+        for (let x=0; x<W; x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+        for (let y=0; y<H; y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+        ctx.restore();
+    }
+
+    function _drawStructuralEdges() {
+        edges.forEach(e => {
+            const a = nodeList[e.i], b = nodeList[e.j];
+            if (!a || !b) return;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(25,50,100,0.50)';
+            ctx.lineWidth   = 0.8;
+            ctx.beginPath(); ctx.moveTo(a.cx,a.cy); ctx.lineTo(b.cx,b.cy); ctx.stroke();
+            ctx.restore();
+        });
+    }
+
+    function _drawScanEdges() {
+        if (!queryNode || scanEdges.length === 0) return;
+        scanEdges.forEach(e => {
+            const n = e.nodeRef;
+            const prog = e.progress;
+            const tx = queryNode.cx + (n.cx - queryNode.cx) * prog;
+            const ty = queryNode.cy + (n.cy - queryNode.cy) * prog;
+            const col = e.sim > 0.72 ? C.green
+                      : e.sim > 0.55 ? C.violet
+                      : e.sim > 0.38 ? C.blue
+                      : 'rgba(20,40,80,0.18)';
+            const lw  = e.sim > 0.55 ? e.sim * 2.8 : 0.5;
+            const al  = e.sim > 0.38 ? Math.min(0.95, e.sim * 1.5) : 0.12;
+            ctx.save();
+            ctx.strokeStyle = col;
+            ctx.lineWidth   = lw;
+            ctx.globalAlpha = al;
+            ctx.beginPath(); ctx.moveTo(queryNode.cx,queryNode.cy); ctx.lineTo(tx,ty); ctx.stroke();
+            ctx.restore();
+        });
+    }
+
+    function _drawChunk(n) {
+        ctx.save();
+        ctx.globalAlpha = n.alpha;
+        // Glow halo — brighter for matched nodes
+        const glowR = n.sim !== null && n.sim > 0.55 ? n.r * 4.5 : n.r * 3;
+        const g = ctx.createRadialGradient(n.cx, n.cy, 0, n.cx, n.cy, glowR);
+        g.addColorStop(0, n.color + '44');
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(n.cx, n.cy, glowR, 0, Math.PI*2); ctx.fill();
+        // Core
+        const pulseMod = n.sim !== null && n.sim > 0.55 ? Math.sin(n.pulse)*1.5 : Math.sin(n.pulse)*0.6;
+        ctx.fillStyle = n.color;
+        ctx.beginPath(); ctx.arc(n.cx, n.cy, n.r + pulseMod, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+    }
+
+    function _drawQueryNode() {
+        if (!queryNode) return;
+        queryNode.alpha = Math.min(1, (queryNode.alpha||0) + 0.04);
+        queryNode.pulse = (queryNode.pulse||0) + 0.06;
+        ctx.save();
+        // Pulsing rings
+        [2.8, 4.2].forEach((mult, i) => {
+            ctx.strokeStyle = C.gold;
+            ctx.lineWidth   = 1.5 - i*0.5;
+            ctx.globalAlpha = queryNode.alpha * (0.4 + 0.25*Math.sin(queryNode.pulse + i*1.2));
+            ctx.beginPath(); ctx.arc(queryNode.cx, queryNode.cy, queryNode.r*mult, 0, Math.PI*2); ctx.stroke();
+        });
+        // Glow
+        ctx.globalAlpha = queryNode.alpha;
+        const g = ctx.createRadialGradient(queryNode.cx, queryNode.cy, 0, queryNode.cx, queryNode.cy, queryNode.r*5.5);
+        g.addColorStop(0, C.gold+'55'); g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(queryNode.cx, queryNode.cy, queryNode.r*5.5, 0, Math.PI*2); ctx.fill();
+        // Core
+        ctx.fillStyle = C.gold;
+        ctx.beginPath(); ctx.arc(queryNode.cx, queryNode.cy, queryNode.r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 7px monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('Q', queryNode.cx, queryNode.cy);
+        ctx.restore();
+    }
+
+    function _drawSimLabel(n) {
+        ctx.save();
+        ctx.font      = '8px monospace';
+        ctx.fillStyle = n.sim > 0.72 ? C.green : n.sim > 0.55 ? C.violet : C.blue;
+        ctx.globalAlpha = 0.88;
+        ctx.textAlign = 'center';
+        ctx.fillText((n.sim*100).toFixed(0)+'%', n.cx, n.cy - n.r - 5);
+        ctx.restore();
+    }
+
+    function setStatus(s) {
+        const el = document.getElementById('vizStatus');
+        if (!el) return;
+        const labels = {IDLE:'IDLE', LOADING:'⟳ LOADING', SCANNING:'⚡ SCANNING', DONE:'✓ DONE', ERROR:'✗ ERROR'};
+        el.textContent = labels[s]||s;
+        el.style.color = s==='SCANNING'?'var(--amber)':s==='DONE'?'var(--green)':s==='ERROR'?'var(--red)':'var(--text-muted)';
+    }
+
+    function setInfo(msg) {
+        const el = document.getElementById('simInfo');
+        if (el) el.textContent = msg;
+    }
+
+    function reset() { _resetScan(); }
+    function startIdle() { /* no-op: render loop always runs */ }
+    // triggerScan is NOT used anymore — animation is driven by onVizSearch()
+    // which is called by the chat EventSource when viz_search event arrives
+    function triggerScan() { /* deprecated — real data only */ }
+
+    return { init, reset, startIdle, triggerScan, onVizSearch };
+})();
+
+// Init engine after DOM + script fully loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => simEngine.init());
+} else {
+    // readyState is 'interactive' or 'complete'
+    simEngine.init();
+}
+
+</script>
+</body>
+</html>
